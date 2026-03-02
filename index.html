@@ -1195,5 +1195,249 @@ setInterval(function() {
 })(); // end IIFE
 /* ══════════════════════════════════════════════════════════════════════════ */
 </script>
-</body>
+<script>
+var av3ChatHistory = {};
+var av3Dismissed   = {};
+var av3PanelShown  = {};
+var av3ResTimer    = null;
+var av3LastResText = '';
+try { av3Dismissed = JSON.parse(localStorage.getItem('av3MPD') || '{}'); } catch(e) {}
+
+function av3Md(t) {
+  return t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+          .replace(/\*(.*?)\*/g,'<em>$1</em>')
+          .replace(/\n/g,'<br>');
+}
+
+function av3UpgradeAskAlphie(ticker, signal, assetClass) {
+  var btnsEl = document.getElementById('ddpQABtns');
+  if (!btnsEl || btnsEl.getAttribute('data-av3')) return;
+  btnsEl.setAttribute('data-av3', '1');
+  var suggMap = {
+    'BUY':   ['Why is this rated BUY?','What are the key risks?','What price target should I aim for?','How does it compare to peers?','Is now a good entry point?'],
+    'WATCH': ['What would make this a BUY?','What near-term catalysts should I watch?','What do the technicals say?','Is volatility elevated?','How is the sector trending?'],
+    'AVOID': ['Why is this rated AVOID?','What are the biggest risk factors?','When could this recover?','What would reverse this signal?','Are there hedging options?']
+  };
+  var suggs  = suggMap[signal] || suggMap['WATCH'];
+  var chatId = 'av3chat_' + ticker;
+  var logId  = 'av3log_'  + ticker;
+  var inpId  = 'av3inp_'  + ticker;
+  var suggHtml = suggs.map(function(q) {
+    return '<button class="av3-sugg-btn" onclick="window.av3SendChat(' +
+      JSON.stringify(ticker) + ',' + JSON.stringify(q) + ',' + JSON.stringify(assetClass || 'stocks') +
+      ')">' + q + '</button>';
+  }).join('');
+  var sendFn = 'var i=document.getElementById(' + JSON.stringify(inpId) +
+    ');if(i&&i.value.trim()){var q=i.value.trim();i.value="";window.av3SendChat(' +
+    JSON.stringify(ticker) + ',q,' + JSON.stringify(assetClass || 'stocks') + ');}';
+  var chatHtml =
+    '<div class="av3-chat-wrap" id="' + chatId + '">' +
+      '<div class="av3-chat-header">Ask Alphie\u2122</div>' +
+      '<div class="av3-sugg-wrap">' + suggHtml + '</div>' +
+      '<div class="av3-chat-log" id="' + logId + '">' +
+        '<div class="av3-msg-bot">Hi! I\'m Alphie\u2122. I\'ve just analysed <strong>' + ticker + '</strong>. What would you like to know?</div>' +
+      '</div>' +
+      '<div class="av3-chat-input-row">' +
+        '<input class="av3-chat-input" id="' + inpId + '" placeholder="Ask about ' + ticker + '\u2026" ' +
+          'onkeydown="if(event.key===\'Enter\'){' + sendFn + '}">' +
+        '<button class="av3-chat-send" onclick="' + sendFn + '">Send</button>' +
+      '</div>' +
+    '</div>';
+  var container = btnsEl;
+  var p = btnsEl.parentNode;
+  while (p && p !== document.body) {
+    if (p.style && (p.style.padding || p.getAttribute('style') || '').indexOf('14px') >= 0) {
+      container = p; break;
+    }
+    p = p.parentNode;
+  }
+  container.outerHTML = chatHtml;
+  window.av3ChatHistory[ticker] = [];
+}
+
+window.av3SendChat = function(ticker, question, assetClass) {
+  var logId = 'av3log_' + ticker;
+  var log   = document.getElementById(logId);
+  if (!log) return;
+  log.innerHTML += '<div class="av3-msg-user">' + question.replace(/</g, '&lt;') + '</div>';
+  var typId = 'avtyp_' + Date.now();
+  log.innerHTML += '<div class="av3-msg-typing" id="' + typId + '">Alphie\u2122 is thinking\u2026</div>';
+  log.scrollTop = 99999;
+  if (!window.av3ChatHistory[ticker]) window.av3ChatHistory[ticker] = [];
+  window.av3ChatHistory[ticker].push({role:'user', content: question});
+  var doCall = function(ctx) {
+    var msgs = [{role:'user', content:'[CONTEXT] ' + ctx}].concat(window.av3ChatHistory[ticker]);
+    av3CallClaude(msgs, 350, function(reply, err) {
+      var typing = document.getElementById(typId);
+      if (typing) typing.remove();
+      var text = err ? 'Analysis unavailable. Please check your API key.' : (reply || 'No response.');
+      if (!err && reply) window.av3ChatHistory[ticker].push({role:'assistant', content: reply});
+      log.innerHTML += '<div class="av3-msg-bot">' + av3Md(text) + '</div>';
+      log.scrollTop = 99999;
+    });
+  };
+  var ctx = 'Ticker:' + ticker + ' | Asset:' + (assetClass || 'stocks');
+  if (typeof FRED !== 'undefined') {
+    FRED.getMultiple(['DFF','DGS10','VIXCLS']).then(function(m) {
+      ctx += ' | FedFunds:' + (m.DFF||'N/A') + '% | 10Y:' + (m.DGS10||'N/A') + '% | VIX:' + (m.VIXCLS||'N/A');
+      doCall(ctx);
+    }).catch(function() { doCall(ctx); });
+  } else {
+    doCall(ctx);
+  }
+};
+
+window.av3DismissPanel = function(panelId) {
+  var el = document.getElementById(panelId);
+  if (el) el.style.display = 'none';
+  av3Dismissed[panelId] = true;
+  try { localStorage.setItem('av3MPD', JSON.stringify(av3Dismissed)); } catch(e) {}
+};
+
+window.av3MPAsk = function(panelId, question, ctx) {
+  var ans = document.getElementById(panelId + '_ans');
+  if (!ans) return;
+  ans.style.display = 'block';
+  ans.innerHTML = '<em style="color:var(--muted,#888)">Alphie\u2122 is thinking\u2026</em>';
+  av3CallClaude([{role:'user', content:'[CONTEXT] ' + ctx + '\n\nQuestion: ' + question}], 300, function(reply, err) {
+    ans.innerHTML = err ? 'Analysis unavailable.' : av3Md(reply || 'No response.');
+  });
+};
+
+window.av3MPSubmit = function(panelId, ctx) {
+  var inp = document.getElementById(panelId + '_inp');
+  if (!inp || !inp.value.trim()) return;
+  var q = inp.value.trim(); inp.value = '';
+  window.av3MPAsk(panelId, q, ctx);
+};
+
+function av3RenderPanel(panelId, icon, title, suggs, ctx) {
+  if (av3Dismissed[panelId]) return '';
+  var suggHtml = suggs.map(function(q) {
+    return '<button class="av3-mp-btn" onclick="window.av3MPAsk(' +
+      JSON.stringify(panelId) + ',' + JSON.stringify(q) + ',' + JSON.stringify(ctx) + ')">' + q + '</button>';
+  }).join('');
+  return (
+    '<div class="av3-mp" id="' + panelId + '">' +
+      '<button class="av3-mp-dismiss" onclick="window.av3DismissPanel(' + JSON.stringify(panelId) + ')">\u00d7</button>' +
+      '<div class="av3-mp-header">' +
+        '<span class="av3-mp-icon">' + icon + '</span>' +
+        '<span class="av3-mp-title">Alphie\u2122 ' + title + '</span>' +
+      '</div>' +
+      '<div class="av3-mp-insight" id="' + panelId + '_ins"><em style="color:var(--muted,#888)">Loading insight\u2026</em></div>' +
+      '<div class="av3-mp-sugg">' + suggHtml + '</div>' +
+      '<div class="av3-mp-answer" id="' + panelId + '_ans"></div>' +
+      '<div class="av3-mp-input-row">' +
+        '<input class="av3-mp-input" id="' + panelId + '_inp" placeholder="Ask a follow-up\u2026" ' +
+          'onkeydown="if(event.key===\'Enter\')window.av3MPSubmit(' + JSON.stringify(panelId) + ',' + JSON.stringify(ctx) + ')">' +
+        '<button class="av3-mp-send" onclick="window.av3MPSubmit(' + JSON.stringify(panelId) + ',' + JSON.stringify(ctx) + ')">Ask</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function av3LoadPanelInsight(panelId, title, ctx) {
+  var ins = document.getElementById(panelId + '_ins');
+  if (!ins) return;
+  av3CallClaude([{role:'user', content:
+    '[CONTEXT] ' + ctx + '\n\nIn 2 sentences, give a sharp, specific market intelligence insight for this ' + title + ' view. Be concrete and data-driven.'
+  }], 180, function(reply, err) {
+    if (ins) ins.innerHTML = err ? 'Insight unavailable.' : av3Md(reply || '');
+  });
+}
+
+function av3ShowModulePanel(panelId, icon, title, suggs) {
+  if (av3Dismissed[panelId] || av3PanelShown[panelId]) return;
+  var results = document.getElementById('amiResults');
+  if (!results) return;
+  if (results.querySelector('.ami-idle') || results.querySelector('.ami-scanning')) return;
+  av3PanelShown[panelId] = true;
+  var asset = (typeof amiAsset !== 'undefined') ? amiAsset : 'stocks';
+  var ctx   = title + ' | Asset:' + asset;
+  var inject = function(c) {
+    if (!document.getElementById(panelId)) {
+      var wrap = document.createElement('div');
+      wrap.innerHTML = av3RenderPanel(panelId, icon, title, suggs, c);
+      var first = wrap.firstElementChild;
+      if (first) results.insertBefore(first, results.firstChild);
+      av3LoadPanelInsight(panelId, title, c);
+    }
+  };
+  if (typeof FRED !== 'undefined') {
+    FRED.getMultiple(['DFF','DGS10','VIXCLS']).then(function(m) {
+      ctx += ' | FedFunds:' + (m.DFF||'N/A') + '% | 10Y:' + (m.DGS10||'N/A') + '% | VIX:' + (m.VIXCLS||'N/A');
+      inject(ctx);
+    }).catch(function() { inject(ctx); });
+  } else {
+    inject(ctx);
+  }
+}
+
+var av3Observer = new MutationObserver(function(mutations) {
+  var checkResults = false;
+  for (var i = 0; i < mutations.length; i++) {
+    var m = mutations[i]; var target = m.target;
+    if (!target) continue;
+    if (target.id === 'alDDKeyStats' && !target.getAttribute('data-av3')) {
+      if (target.innerHTML && target.innerHTML.trim()) {
+        target.setAttribute('data-av3', '1');
+        if (typeof av3RenderScores === 'function') av3RenderScores(target);
+      }
+      continue;
+    }
+    if (target.id === 'amiResults') { checkResults = true; continue; }
+    if (m.type === 'childList') {
+      var addedNodes = m.addedNodes;
+      for (var j = 0; j < addedNodes.length; j++) {
+        var node = addedNodes[j];
+        if (!node || node.nodeType !== 1) continue;
+        if (node.id === 'alDDKeyStats' && !node.getAttribute('data-av3')) {
+          (function(el) { setTimeout(function() {
+            if (el.innerHTML && !el.getAttribute('data-av3')) {
+              el.setAttribute('data-av3', '1');
+              if (typeof av3RenderScores === 'function') av3RenderScores(el);
+            }
+          }, 400); }(node));
+        }
+        if (node.id === 'amiResults') { checkResults = true; }
+        if (node.querySelector) {
+          var ks = node.querySelector('#alDDKeyStats');
+          if (ks && !ks.getAttribute('data-av3')) {
+            (function(el) { setTimeout(function() {
+              if (el.innerHTML && !el.getAttribute('data-av3')) {
+                el.setAttribute('data-av3', '1');
+                if (typeof av3RenderScores === 'function') av3RenderScores(el);
+              }
+            }, 400); }(ks));
+          }
+        }
+      }
+    }
+  }
+  if (checkResults) {
+    if (av3ResTimer) clearTimeout(av3ResTimer);
+    av3ResTimer = setTimeout(function() {
+      var results = document.getElementById('amiResults');
+      if (!results || results.querySelector('.ami-idle') || results.querySelector('.ami-scanning')) return;
+      var newText = results.innerHTML.slice(0, 120);
+      if (newText === av3LastResText) return;
+      av3LastResText = newText;
+      var mode = (typeof amiMode !== 'undefined') ? amiMode : '';
+      av3PanelShown = {};
+      if (mode === 'scan') {
+        av3ShowModulePanel('alphieMP_scan', '\uD83D\uDD0D', 'Scan Intelligence',
+          ['What is the top sector momentum?','Any strong BUY signals in results?','What macro risks should I watch?','Which signals look strongest?']);
+      } else if (mode === 'macro') {
+        av3ShowModulePanel('alphieMP_macro', '\uD83C\uDF10', 'Macro Intelligence',
+          ['Is the backdrop risk-on or risk-off?','What does the yield curve say?','How to position given VIX?','Inflation vs recession risk?']);
+      } else if (mode === 'screener') {
+        av3ShowModulePanel('alphieMP_scr', '\uD83D\uDCCA', 'Screener Intelligence',
+          ['Which sectors have best factor scores?','Any overlooked value plays?','Which quality metrics matter most?','What does momentum say?']);
+      }
+    }, 500);
+  }
+});
+
+av3Observer.observe(document.body, { childList: true, subtree: true, attributes: false, characterData: false });
+</script></body>
 </html>
