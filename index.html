@@ -452,14 +452,12 @@ async function callAlphieAI(history, platformContext) {
     }
   }
   
-  var resp = await fetch('https://api.anthropic.com/v1/messages', {
+  var resp = await fetch('https://rough-silence-cc43.selfiewealth381.workers.dev', {
     method: 'POST',
     headers: {
-      'x-api-key': ALPHIE_AI_KEY,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
+      },
     body: JSON.stringify({
       model: ALPHIE_MODEL,
       max_tokens: 1200,
@@ -536,9 +534,9 @@ var insightsArticles={"How AI is Reshaping Investment Analysis":{cat:"ai-tech",d
       if(macro.length>0)ctxParts.push("Macro Context: "+macro.join(" | "));
     }catch(x){}
     var prompt="Please provide a comprehensive Alphie™ Deep Dive analysis for "+e+" ("+((instData[0]||e))+"). \n\nUse this live data:\n"+ctxParts.join("\n")+"\n\nFormat your response as:\n**Alphie™ Signal:** [BUY / WATCH / AVOID] — [one sentence rationale]\n\n**Key Observations:**\n• [observation 1 with data reference]\n• [observation 2]\n• [observation 3]\n\n**Interpretation:** [2-3 sentences on why this matters now]\n\n**Forecast (15–30 day):**\n• Bull case (X% probability): [scenario]\n• Base case (X% probability): [scenario]\n• Bear case (X% probability): [scenario]\n\n**Risks & Assumptions:** [2-3 key risks]\n\n**Disclaimer:** [rotating analytical disclaimer]";
-    var resp=await fetch("https://api.anthropic.com/v1/messages",{
+    var resp=await fetch("https://rough-silence-cc43.selfiewealth381.workers.dev",{
       method:"POST",
-      headers:{"x-api-key":ALPHIE_AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
+      headers:{"anthropic-version":"2023-06-01","content-type":"application/json",},
       body:JSON.stringify({model:ALPHIE_MODEL,max_tokens:800,system:ALPHIE_SYSTEM_PROMPT,messages:[{role:"user",content:prompt}]})
     });
     if(!resp.ok)throw new Error("API "+resp.status);
@@ -584,9 +582,9 @@ var insightsArticles={"How AI is Reshaping Investment Analysis":{cat:"ai-tech",d
       if(fred.DGS10)ctxParts.push("10Y Yield: "+fred.DGS10.value+"%");
     }catch(e){}
     var userMsg="I am viewing "+ticker+" in the deep-dive panel. "+question+"\n\n[LIVE CONTEXT]\n"+ctxParts.join("\n")+"\n[END]\n\nProvide a concise, data-grounded analytical answer (max 4 sentences). Include probability language where appropriate.";
-    var resp=await fetch("https://api.anthropic.com/v1/messages",{
+    var resp=await fetch("https://rough-silence-cc43.selfiewealth381.workers.dev",{
       method:"POST",
-      headers:{"x-api-key":ALPHIE_AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
+      headers:{"anthropic-version":"2023-06-01","content-type":"application/json",},
       body:JSON.stringify({model:ALPHIE_MODEL,max_tokens:350,system:ALPHIE_SYSTEM_PROMPT,messages:[{role:"user",content:userMsg}]})
     });
     var data=await resp.json();
@@ -625,9 +623,9 @@ var insightsArticles={"How AI is Reshaping Investment Analysis":{cat:"ai-tech",d
       }catch(e){}
     }
     var userMsg="I am looking at "+ticker+" in the AMI platform. "+question+"\n\n[CONTEXT]\n"+ctxParts.join("\n")+"\n[END CONTEXT]\n\nPlease give a focused, analytical response (3-5 sentences max). Use plain language and include a probability or confidence level where relevant.";
-    var resp=await fetch("https://api.anthropic.com/v1/messages",{
+    var resp=await fetch("https://rough-silence-cc43.selfiewealth381.workers.dev",{
       method:"POST",
-      headers:{"x-api-key":ALPHIE_AI_KEY,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
+      headers:{"anthropic-version":"2023-06-01","content-type":"application/json",},
       body:JSON.stringify({model:ALPHIE_MODEL,max_tokens:400,system:ALPHIE_SYSTEM_PROMPT,messages:[{role:"user",content:userMsg}]})
     });
     var data=await resp.json();
@@ -787,18 +785,11 @@ function av3Md(text) {
 }
 
 function av3CallClaude(messages, maxTokens, callback) {
-  var key   = (typeof ALPHIE_AI_KEY !== 'undefined')      ? ALPHIE_AI_KEY      : '';
-  var model = (typeof ALPHIE_MODEL   !== 'undefined')      ? ALPHIE_MODEL       : 'claude-3-haiku-20240307';
-  var sys   = (typeof ALPHIE_SYSTEM_PROMPT !== 'undefined')? ALPHIE_SYSTEM_PROMPT : 'You are Alphie, a professional financial analyst AI.';
-  if (!key) { callback(null, 'No API key configured.'); return; }
-  fetch('https://api.anthropic.com/v1/messages', {
+  var model = (typeof ALPHIE_MODEL   !== 'undefined') ? ALPHIE_MODEL : 'claude-3-haiku-20240307';
+  var sys   = (typeof ALPHIE_SYSTEM_PROMPT !== 'undefined') ? ALPHIE_SYSTEM_PROMPT : 'You are Alphie, a professional financial analyst AI.';
+  fetch('https://rough-silence-cc43.selfiewealth381.workers.dev', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: model, max_tokens: maxTokens, system: sys, messages: messages })
   })
   .then(function(r) { return r.json(); })
